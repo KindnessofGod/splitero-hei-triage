@@ -181,6 +181,7 @@ export class DeterministicRulesEngine implements RulesEngine {
       tested: result.tested,
       threshold: result.threshold,
       terminal: spec?.terminal ?? false,
+      ...(spec?.blocksApproval ? { blocksApproval: true } : {}),
     };
   }
 
@@ -220,7 +221,14 @@ export class DeterministicRulesEngine implements RulesEngine {
     } else if (incomplete.length > 0) {
       [winners, decision] = [incomplete, 'INCOMPLETE'];
     } else {
-      [winners, decision] = [[], 'APPROVE'];
+      // Nothing objected. But a "necessary but not sufficient" check that never got
+      // confirmed must not become a clean approval — see RuleOutcomeSpec.blocksApproval.
+      const blockers = findings.filter((f) => f.blocksApproval);
+      if (blockers.length > 0) {
+        [winners, decision, escalationKind] = [blockers, 'ESCALATE', 'POLICY'];
+      } else {
+        [winners, decision] = [[], 'APPROVE'];
+      }
     }
 
     const principalReasons = [...winners]

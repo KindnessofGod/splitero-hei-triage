@@ -1,0 +1,623 @@
+# Splitero HEI eligibility rules
+#
+# SOURCE OF TRUTH: docs/research/SPLITERO_VERIFIED_TERMS.md — read directly from
+# splitero.com on 2026-08-16. This file supersedes docs/research/HEI_DOMAIN.md §1.5,
+# which is wrong in four places (marked ⚠ WAS-WRONG below).
+#
+# WHAT LIVES HERE: numbers, dates, lists, reason codes. Things that change.
+# WHAT DOES NOT: logic. Predicates are tested TypeScript in
+# packages/rules-engine/src/predicates.ts. See docs/DECISIONS.draft.md entry 015.
+#
+# Every rule carries `effective_from`, so a decision made today can be replayed under
+# today's rules in 2029. Changing a number means adding a rule version with a new
+# effective_from, never editing one in place.
+
+rules_version: "2026-08-16"
+effective_from: "2026-08-16"
+source: "splitero.com FAQ + eligibility pages, read 2026-08-16"
+supersedes_note: >
+  Overrides HEI_DOMAIN.md §1.5. Four values there are wrong: max investment
+  ($500k -> $600k), max CLTV (0.65-0.70 -> 0.75), Safety Cap (19.99% -> 17.99%),
+  and the state list (13-14 with Colorado uncertain -> 17 with no Colorado).
+
+# Below this, an extracted value is treated as untrustworthy and the rule that reads it
+# escalates instead of deciding. A parameter, deliberately — so that "the model was not
+# sure enough" is a threshold someone chose, not a judgement the model made.
+confidence_floor: 0.70
+
+# Reference constants. Not rules — used by the settlement calculator and the renderer.
+constants:
+  investment:
+    min_amount_usd: 50000
+    max_amount_usd: 600000          # ⚠ WAS-WRONG: research said $500k
+    max_pct_of_home_value: 0.25
+  pricing:
+    origination_fee_pct: 0.0499
+    origination_fee_min_usd: 1500
+    safety_cap_annual_pct: 0.1799   # ⚠ WAS-WRONG: research said 19.99%
+    repurchase_statement_usd: 30
+  payout:
+    # Confirmed first-party and previously the biggest open question. TOTAL home value,
+    # not change in value: "Repurchase Amount = Split Percentage x your home's appraised
+    # value at repurchase (up to the Safety Cap)". Getting this wrong would have made
+    # every settlement number roughly five times too small.
+    model: TOTAL_HOME_VALUE
+    downside_shared: true
+  term:
+    model: "Maturity Match"
+    min_years: 10
+    max_years: 30
+  timing:
+    application_to_funding_days_typical: 20   # ⚠ WAS-WRONG: research said 10, or 14-30
+
+rules:
+
+  # ─── Geography ──────────────────────────────────────────────────────────────
+  # 17 states. Colorado is NOT among them — the research file flagged it uncertain and
+  # guessed wrong. Idaho, Missouri, Montana and Wyoming were missing from it entirely.
+  - id: geography.state_serviced
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_in_set
+    reads: [property.state]
+    minimum_stage: 1
+    detectable_at_stage: 1
+    on_missing_facts: INCOMPLETE
+    params:
+      set: [AZ, CA, FL, ID, MO, MT, NV, NJ, OH, OR, PA, SC, TN, UT, VA, WA, WY]
+    # Their wording is "specific areas of" those states, and the areas are not published.
+    # So a state match is necessary and never sufficient.
+    #
+    # INFO + blocks_approval, NOT an escalation. If the case fails for some other reason
+    # the area is irrelevant, and escalating every in-footprint application would mask
+    # every decline underneath it. It only bites when the case would otherwise APPROVE.
+    on_pass:
+      disposition: INFO
+      reason_code: STATE_ELIGIBLE_PENDING_AREA_CHECK
+      severity: 10
+      blocks_approval: true
+    on_fail:
+      disposition: DECLINE
+      reason_code: STATE_NOT_SERVICED
+      severity: 100
+      terminal: true      # no human review changes which states they operate in
+
+  # ─── Property box ───────────────────────────────────────────────────────────
+  - id: property.type_eligible
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_not_in_set
+    reads: [property.type]
+    minimum_stage: 1
+    detectable_at_stage: 1
+    on_missing_facts: INCOMPLETE
+    params:
+      # Verbatim from their ineligible list. Log cabins and houseboats are really on it.
+      set: [MULTIFAMILY_5_PLUS, MODULAR, MOBILE, MANUFACTURED, PREFABRICATED,
+            COMMERCIAL, AGRICULTURAL, LOG_CABIN, HOUSEBOAT, GEODESIC, EARTH_BERM,
+            SHIPPING_CONTAINER, VACANT_LAND, TIMESHARE, FRACTIONAL]
+    on_fail:
+      disposition: DECLINE
+      reason_code: PROPERTY_TYPE_INELIGIBLE
+      severity: 100
+      terminal: true
+
+  - id: property.lot_size
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: at_most
+    reads: [property.lot_acres]
+    minimum_stage: 4
+    detectable_at_stage: 1        # a listing or tax record gives this at intake
+    on_missing_facts: SKIP
+    params: { max: 5 }
+    on_fail:
+      disposition: DECLINE
+      reason_code: LOT_SIZE_EXCEEDED
+      severity: 95
+      terminal: true
+
+  - id: property.value_band
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: within_range
+    reads: [valuation.appraised_value]
+    minimum_stage: 5
+    detectable_at_stage: 1        # an automated estimate gets you here at prequalification
+    on_missing_facts: INCOMPLETE
+    params: { min: 200000, max: 5000000 }   # ⚠ WAS-WRONG: research floated $6M max
+    on_fail:
+      disposition: DECLINE
+      reason_code: VALUE_OUT_OF_BAND
+      severity: 80
+
+  - id: title.estate_type
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_in_set
+    reads: [title.estate_type]
+    minimum_stage: 6
+    detectable_at_stage: 6
+    on_missing_facts: INCOMPLETE
+    params: { set: [FEE_SIMPLE] }
+    on_fail:
+      disposition: DECLINE
+      reason_code: LEASEHOLD
+      severity: 95
+      terminal: true
+
+  # ─── Equity ─────────────────────────────────────────────────────────────────
+  # The headline number. Their words: "the total of your new HEI Option plus your loan
+  # balance may not exceed 75% of your home's value".
+  #
+  # Sums the WHOLE lien schedule, not the balance the applicant stated. That difference
+  # is adversarial case 2: the application declares one mortgage, Schedule B shows a deed
+  # of trust and a HELOC, and the real figure is 0.78.
+  - id: equity.max_cltv
+    version: "2"
+    effective_from: "2026-08-16"
+    predicate: ratio_at_most
+    reads: [title.lien_schedule, valuation.appraised_value, offer.requested_amount]
+    minimum_stage: 6
+    detectable_at_stage: 4        # mortgage statements + an estimate get you here at intake
+    on_missing_facts: INCOMPLETE
+    params:
+      numerator: [title.lien_schedule, offer.requested_amount]
+      denominator: valuation.appraised_value
+      max: 0.75                   # ⚠ WAS-WRONG: research said 0.65-0.70
+    on_fail:
+      disposition: DECLINE
+      reason_code: CLTV_EXCEEDED
+      severity: 90
+
+  - id: investment.amount_band
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: within_range
+    reads: [offer.requested_amount]
+    minimum_stage: 3
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    params: { min: 50000, max: 600000 }
+    on_fail:
+      disposition: DECLINE
+      reason_code: AMOUNT_OUT_OF_BAND
+      severity: 70
+
+  - id: investment.max_pct_of_value
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: ratio_at_most
+    reads: [offer.requested_amount, valuation.appraised_value]
+    minimum_stage: 5
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    params:
+      numerator: [offer.requested_amount]
+      denominator: valuation.appraised_value
+      max: 0.25
+    on_fail:
+      disposition: DECLINE
+      reason_code: AMOUNT_EXCEEDS_MAX_PCT
+      severity: 70
+
+  # ─── Credit ─────────────────────────────────────────────────────────────────
+  # 500 is genuinely low — it is one of Splitero's real differentiators. There is no
+  # income test, no debt-to-income test, no employment test and no age test, so there are
+  # deliberately no rules for those. Their absence is the product.
+  - id: credit.min_score
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: at_least
+    reads: [credit.score]
+    minimum_stage: 3
+    detectable_at_stage: 1        # soft pull happens at prequalification
+    on_missing_facts: INCOMPLETE
+    params: { min: 500 }
+    on_fail:
+      disposition: DECLINE
+      reason_code: CREDIT_BELOW_FLOOR
+      severity: 85
+
+  - id: credit.report_freshness
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: date_within_days
+    reads: [credit.report_date]
+    minimum_stage: 7
+    detectable_at_stage: 7
+    on_missing_facts: SKIP
+    params: { days: 120 }
+    on_fail:
+      disposition: INCOMPLETE     # refresh the report; this is not an adverse action
+      reason_code: CREDIT_REPORT_STALE
+      severity: 30
+
+  # ─── Occupancy — unresolved on purpose ──────────────────────────────────────
+  # Splitero's own FAQ contradicts itself. One page: "Are second homes or investment
+  # properties eligible? Yes." Another: "Your property must be owner-occupied at the time
+  # of origination." Both cannot be the operating rule.
+  #
+  # We do not pick one. Escalating costs a reviewer's time; guessing wrong either declines
+  # someone who qualifies or advances someone who gets declined in month four, which is the
+  # exact harm this system exists to prevent. See docs/business/FAQ.md §1.
+  - id: occupancy.ambiguous_policy
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: always
+    reads: [property.occupancy_claim]
+    minimum_stage: 3
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    applies_when: { key: property.occupancy_claim, value_in: [SECOND_HOME, INVESTMENT] }
+    on_pass:
+      disposition: POLICY_ESCALATE
+      reason_code: OCCUPANCY_AMBIGUOUS
+      severity: 60
+      note: >
+        Splitero's published FAQ conflicts on occupancy. Reviewer must apply current
+        underwriting guidance; do not infer from the public pages.
+
+  # Cross-document occupancy contradiction — adversarial case 18. The application says
+  # primary residence, the tax record shows no homestead exemption, the insurance policy
+  # is a landlord form. Each document alone is unremarkable.
+  - id: occupancy.cross_document_conflict
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: set_intersects
+    reads: [occupancy.corroborating_signals]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    applies_when: { key: property.occupancy_claim, value_in: [PRIMARY] }
+    params: { set: [NO_HOMESTEAD_EXEMPTION, LANDLORD_POLICY_DP3, MAILING_ADDRESS_DIFFERS] }
+    on_pass:
+      disposition: DECLINE
+      reason_code: OCCUPANCY_MISMATCH
+      severity: 85
+
+  # ─── Condition — the thesis rule ────────────────────────────────────────────
+  # Adversarial case 8, and the whole reason this project exists. A Hometap applicant was
+  # rejected for roof and water damage he had disclosed upfront as his reason for wanting
+  # the money. Estevan G. spent 4.5 months and borrowed to replace a roof before a decline.
+  #
+  # This reads the free-text purpose field with a keyword list — deterministic matching,
+  # not a model's opinion — and fires at STAGE 3, before an appraisal is ordered. The C5
+  # rating that arrives at stage 5 only confirms what was already said.
+  - id: condition.self_disclosed_damage
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: text_matches_any
+    reads: [application.free_text_purpose]
+    minimum_stage: 3
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    params:
+      patterns:
+        - "roof (is )?(leak|leaking|leaks|failing|caving|shot|bad)"
+        - "(need|needs|replace|replacing) (a )?(new )?roof"
+        - "water damage"
+        - "flood(ed|ing)? (the )?(basement|house|home)"
+        - "foundation (crack|issue|problem|settling)"
+        - "mold"
+        - "uninhabitable"
+        - "condemn(ed)?"
+        - "fire damage"
+    on_pass:
+      disposition: DECLINE
+      reason_code: SELF_DISCLOSED_DAMAGE
+      severity: 88
+      note: >
+        Disclosed by the applicant at intake. Decline here, before appraisal and title
+        spend, rather than after. This is the rule the project exists for.
+
+  - id: condition.rating
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_not_in_set
+    reads: [valuation.condition_rating]
+    minimum_stage: 5
+    detectable_at_stage: 5
+    on_missing_facts: SKIP
+    params: { set: [C5, C6] }
+    on_fail:
+      disposition: DECLINE
+      reason_code: CONDITION_C5_C6
+      severity: 88
+
+  # ─── Seasoning and default history ──────────────────────────────────────────
+  # The research file missed all of these. They are specific, checkable, and exactly the
+  # kind of thing that surfaces at week six and kills a deal.
+  - id: seasoning.bankruptcy
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: date_at_least_days_ago
+    reads: [credit.bankruptcy_dismissal_date]
+    minimum_stage: 4
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    params: { days: 1461 }        # 4 years from the most recent dismissal date
+    on_fail:
+      disposition: DECLINE
+      reason_code: BANKRUPTCY_SEASONING
+      severity: 85
+
+  - id: seasoning.foreclosure
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: date_at_least_days_ago
+    reads: [credit.foreclosure_completion_date]
+    minimum_stage: 4
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    params: { days: 2557 }        # 7 years from completion
+    on_fail:
+      disposition: DECLINE
+      reason_code: FORECLOSURE_SEASONING
+      severity: 85
+
+  - id: default.nod_count_12mo
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: count_at_most
+    reads: [default.nod_dates_12mo]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { max: 2 }            # not more than two Notices of Default in 12 months
+    on_fail:
+      disposition: DECLINE
+      reason_code: NOD_FREQUENCY
+      severity: 80
+
+  - id: default.nos_12mo
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: count_at_most
+    reads: [default.nos_dates_12mo]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { max: 0 }            # no Notice of Sale at all in the past 12 months
+    on_fail:
+      disposition: DECLINE
+      reason_code: NOS_PRESENT
+      severity: 90
+
+  - id: default.nos_36mo
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: count_at_most
+    reads: [default.nos_dates_36mo]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { max: 1 }
+    on_fail:
+      disposition: DECLINE
+      reason_code: NOS_FREQUENCY
+      severity: 80
+
+  - id: senior_mortgage.remaining_term
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: at_most
+    reads: [mortgage.remaining_years]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { max: 30 }
+    on_fail:
+      disposition: DECLINE
+      reason_code: SENIOR_MORTGAGE_TERM_EXCEEDED
+      severity: 75
+
+  # ─── Title, liens and vesting ───────────────────────────────────────────────
+  # Super-priority liens sit ahead of everything, including the first mortgage. A classic
+  # HEI killer in California and Florida.
+  - id: lien.superpriority
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: set_intersects
+    reads: [title.lien_types]
+    minimum_stage: 6
+    detectable_at_stage: 4        # PACE liens appear on the property tax bill
+    on_missing_facts: SKIP
+    params: { set: [PACE, HERO, MELLO_ROOS_DELINQUENT] }
+    on_pass:
+      disposition: DECLINE
+      reason_code: SUPERPRIORITY_LIEN
+      severity: 92
+
+  - id: lien.mechanics
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: set_intersects
+    reads: [title.lien_types]
+    minimum_stage: 6
+    detectable_at_stage: 6
+    on_missing_facts: SKIP
+    params: { set: [MECHANICS, LIS_PENDENS] }
+    on_pass:
+      disposition: DECLINE
+      reason_code: MECHANICS_LIEN
+      severity: 88
+
+  # Case by case, per their FAQ. So it escalates — it is not ours to decline.
+  - id: encumbrance.requires_payoff
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: set_intersects
+    reads: [title.lien_types]
+    minimum_stage: 6
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { set: [REVERSE_MORTGAGE, SHARED_EQUITY_AGREEMENT, HELOC, HOME_EQUITY_LOAN] }
+    on_pass:
+      disposition: POLICY_ESCALATE
+      reason_code: ENCUMBRANCE_REQUIRES_REVIEW
+      severity: 55
+      note: >
+        Reverse mortgages and other shared-equity agreements must be paid off at or
+        before closing. Splitero may originate behind a HELOC or home equity loan — case
+        by case, so this is a review, not a decline.
+
+  - id: title.transfer_restriction
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: set_intersects
+    reads: [title.exception_types]
+    minimum_stage: 6
+    detectable_at_stage: 6
+    on_missing_facts: SKIP
+    params: { set: [RIGHT_OF_FIRST_REFUSAL, RESALE_RESTRICTION, DEED_RESTRICTION] }
+    on_pass:
+      disposition: POLICY_ESCALATE
+      reason_code: TRANSFER_RESTRICTION
+      severity: 65
+
+  - id: title.vesting_entity
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_in_set
+    reads: [title.vesting_type]
+    minimum_stage: 6
+    detectable_at_stage: 6
+    on_missing_facts: SKIP
+    # Trusts and LLCs ARE eligible "subject to approval" — so this is a document request
+    # and a review, never a decline. Adversarial case 5 tests that we do not over-reject.
+    params: { set: [TRUST, LLC] }
+    on_pass:
+      disposition: POLICY_ESCALATE
+      reason_code: ENTITY_VESTING
+      severity: 50
+      note: "Eligible subject to approval. Needs trust certification or operating agreement."
+
+  - id: title.co_owner_not_applicant
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: always
+    reads: [title.unmatched_owner_names]
+    minimum_stage: 3
+    detectable_at_stage: 3        # Ed raised his Canadian mother three times at intake
+    on_missing_facts: SKIP
+    on_pass:
+      disposition: POLICY_ESCALATE
+      reason_code: CO_OWNER_NOT_APPLICANT
+      severity: 70
+
+  # In community-property states a non-title spouse may still have to sign. Their FAQ says
+  # this holds during separation and pending divorce until a final decree is recorded.
+  # Surfaces at closing and kills deals at week six, so it is an intake check.
+  - id: spousal.signature_required
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_in_set
+    reads: [property.state]
+    minimum_stage: 3
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    applies_when:
+      key: applicant.marital_status
+      value_in: [MARRIED, SEPARATED, DIVORCE_PENDING]
+    params: { set: [AZ, CA, ID, NV, WA] }   # community-property states in the footprint
+    on_pass:
+      disposition: POLICY_ESCALATE
+      reason_code: SPOUSAL_SIGNATURE_REQUIRED
+      severity: 55
+
+  - id: tax.delinquent
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: at_most
+    reads: [tax.delinquent_amount_usd]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { max: 0 }
+    on_pass: { disposition: PASS }
+    on_fail:
+      disposition: POLICY_ESCALATE      # payable at closing, so a review not a decline
+      reason_code: TAX_DELINQUENT
+      severity: 60
+
+  # ─── Staleness — the Reg B boundary ─────────────────────────────────────────
+  # These are INCOMPLETE, never DECLINE. Different notice, different clock. Adversarial
+  # cases 13 and 16 exist to test that we get this distinction right.
+  - id: valuation.staleness
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: date_within_days
+    reads: [valuation.effective_date]
+    minimum_stage: 7
+    detectable_at_stage: 7
+    on_missing_facts: SKIP
+    params: { days: 120 }
+    on_fail:
+      disposition: INCOMPLETE
+      reason_code: STALE_VALUATION
+      severity: 35
+
+  - id: insurance.expiry
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: date_at_least_days_ahead
+    reads: [insurance.expiration_date]
+    minimum_stage: 4
+    detectable_at_stage: 4
+    on_missing_facts: INCOMPLETE
+    params: { days: 30 }          # policy must run at least 30 days past today
+    on_fail:
+      disposition: INCOMPLETE
+      reason_code: INSURANCE_EXPIRING
+      severity: 35
+
+  - id: insurance.coverage_a
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: ratio_at_least
+    reads: [insurance.coverage_a_usd, valuation.appraised_value]
+    minimum_stage: 5
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params:
+      numerator: [insurance.coverage_a_usd]
+      denominator: valuation.appraised_value
+      min: 0.80
+    on_fail:
+      disposition: INCOMPLETE
+      reason_code: INSUFFICIENT_COVERAGE
+      severity: 35
+
+  - id: insurance.valuation_basis
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: value_in_set
+    reads: [insurance.valuation_basis]
+    minimum_stage: 5
+    detectable_at_stage: 4
+    on_missing_facts: SKIP
+    params: { set: [REPLACEMENT_COST, EXTENDED_REPLACEMENT_COST] }
+    on_fail:
+      disposition: INCOMPLETE
+      reason_code: ACV_NOT_RCV
+      severity: 30
+
+  # ─── Document integrity ─────────────────────────────────────────────────────
+  # Adversarial case 9: a title report for the wrong parcel. Never approve, never decline
+  # — we have no information about THIS applicant's property at all.
+  - id: integrity.apn_mismatch
+    version: "1"
+    effective_from: "2026-08-16"
+    predicate: always
+    reads: [integrity.apn_mismatch_documents]
+    minimum_stage: 6
+    detectable_at_stage: 6
+    on_missing_facts: SKIP
+    on_pass:
+      disposition: INTEGRITY_ESCALATE
+      reason_code: DOCUMENT_MISMATCH
+      severity: 100
+      note: >
+        A document in this packet describes a different parcel. Establish which document
+        is wrong before any decision is made. Do not decline the applicant for this.

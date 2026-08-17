@@ -1,0 +1,14 @@
+{
+  "name": "@hei/rules-loader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "comment": "Parsing YAML needs a dependency; the rules engine is not allowed one. That is why this package exists.",
+  "dependencies": {
+    "yaml": "^2.6.1",
+    "@hei/rules-engine": "*",
+    "@hei/audit": "*"
+  }
+}

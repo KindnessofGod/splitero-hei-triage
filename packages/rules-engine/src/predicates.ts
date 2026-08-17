@@ -126,7 +126,98 @@ export const PREDICATES: Readonly<Record<PredicateId, Predicate>> = {
     return { pass: ageDays <= days, tested: { [key]: value, age_days: ageDays }, threshold: { days } };
   },
 
-  /** Always passes. For rules whose whole job is `appliesWhen` — e.g. occupancy ambiguity. */
+  /** numerator / denominator >= min. Insurance Coverage A against appraised value. */
+  ratio_at_least: ({ values, params }) => {
+    const numeratorKeys = params['numerator'] as readonly string[];
+    const denominatorKey = params['denominator'] as string;
+    const min = num(params['min']);
+
+    let total = 0;
+    const parts: Record<string, number> = {};
+    for (const k of numeratorKeys) {
+      parts[k] = sumNumeric(values[k]);
+      total += parts[k]!;
+    }
+    const denominator = num(values[denominatorKey]);
+    if (denominator === 0) throw new PredicateError('denominator is zero');
+
+    const ratio = round(total / denominator, 4);
+    return {
+      pass: ratio >= min,
+      tested: { ...parts, [denominatorKey]: denominator, ratio },
+      threshold: { min },
+    };
+  },
+
+  /** The date must be at least N days in the past. Seasoning periods. */
+  date_at_least_days_ago: ({ values, params, asOf }) => {
+    const [key, value] = only(values);
+    const days = num(params['days']);
+    const then = Date.parse(String(value));
+    const now = Date.parse(asOf);
+    if (Number.isNaN(then)) throw new PredicateError(`unparseable date ${JSON.stringify(value)}`);
+    const ageDays = round((now - then) / 86_400_000, 1);
+    return { pass: ageDays >= days, tested: { [key]: value, age_days: ageDays }, threshold: { days } };
+  },
+
+  /**
+   * The date must be at least N days in the FUTURE. Insurance and policy expiry.
+   *
+   * Deliberately its own predicate rather than a negative `days` on the ago-variant:
+   * the sign trick read fine and computed backwards, so the expiry rule silently never
+   * fired. A predicate whose name states its direction cannot make that mistake.
+   */
+  date_at_least_days_ahead: ({ values, params, asOf }) => {
+    const [key, value] = only(values);
+    const days = num(params['days']);
+    const then = Date.parse(String(value));
+    const now = Date.parse(asOf);
+    if (Number.isNaN(then)) throw new PredicateError(`unparseable date ${JSON.stringify(value)}`);
+    const daysAhead = round((then - now) / 86_400_000, 1);
+    return {
+      pass: daysAhead >= days,
+      tested: { [key]: value, days_ahead: daysAhead },
+      threshold: { min_days_ahead: days },
+    };
+  },
+
+  /** Any overlap between the fact's values and the parameter set. Lien and signal types. */
+  set_intersects: ({ values, params }) => {
+    const [key, value] = only(values);
+    const set = params['set'] as readonly unknown[];
+    const actual = Array.isArray(value) ? value : [value];
+    const hits = actual.filter((v) => set.includes(v));
+    return { pass: hits.length > 0, tested: { [key]: actual, matched: hits }, threshold: { set } };
+  },
+
+  count_at_most: ({ values, params }) => {
+    const [key, value] = only(values);
+    const max = num(params['max']);
+    const count = Array.isArray(value) ? value.length : num(value);
+    return { pass: count <= max, tested: { [key]: count }, threshold: { max } };
+  },
+
+  /**
+   * Deterministic keyword matching over an applicant's free text. Case 8's intake trigger.
+   *
+   * Note what this is NOT: a model reading the text and forming an opinion. It is a
+   * regular-expression list stored in YAML, so the same sentence always produces the same
+   * finding and the matched phrase lands verbatim in the audit record.
+   */
+  text_matches_any: ({ values, params }) => {
+    const [key, value] = only(values);
+    const patterns = params['patterns'] as readonly string[];
+    const text = String(value ?? '').toLowerCase();
+    const matched = patterns.filter((p) => new RegExp(p, 'i').test(text));
+    return {
+      pass: matched.length > 0,
+      tested: { [key]: String(value ?? '').slice(0, 200), matched_patterns: matched },
+      threshold: { pattern_count: patterns.length },
+    };
+  },
+
+  /** Always passes. For rules whose whole job is `appliesWhen`, or whose fact's mere
+   *  presence is the finding — e.g. occupancy ambiguity, unmatched owner names. */
   always: ({ values }) => ({ pass: true, tested: { ...values }, threshold: {} }),
 };
 

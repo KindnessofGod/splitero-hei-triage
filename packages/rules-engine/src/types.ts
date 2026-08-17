@@ -38,6 +38,8 @@ export interface Finding {
   readonly detectableAtStage: Stage;
   /** True when no human review could change the outcome (e.g. STATE_NOT_SERVICED). */
   readonly terminal: boolean;
+  /** An INFO finding that must not silently become an APPROVE. See RuleOutcomeSpec. */
+  readonly blocksApproval?: boolean;
   readonly missingFacts?: readonly FactKey[];
 }
 
@@ -82,7 +84,13 @@ export type PredicateId =
   | 'at_most'
   | 'within_range'
   | 'ratio_at_most'
+  | 'ratio_at_least'
   | 'date_within_days'
+  | 'date_at_least_days_ago'
+  | 'date_at_least_days_ahead'
+  | 'set_intersects'
+  | 'count_at_most'
+  | 'text_matches_any'
   | 'always';
 
 export interface RuleOutcomeSpec {
@@ -90,6 +98,16 @@ export interface RuleOutcomeSpec {
   readonly reasonCode?: string;
   readonly severity?: number;
   readonly terminal?: boolean;
+  /**
+   * "Necessary but not sufficient." An INFO finding that must not be allowed to become
+   * an APPROVE on its own, but which has no business outranking a decline.
+   *
+   * The state check is the motivating case: Splitero services "specific areas of" 17
+   * states and does not publish which. Telling a Texan they escalated for an area check
+   * is nonsense; telling a Californian they are approved when their county may be
+   * outside the footprint is the broken promise this system exists to prevent.
+   */
+  readonly blocksApproval?: boolean;
   readonly note?: string;
 }
 

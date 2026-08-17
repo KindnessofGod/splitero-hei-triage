@@ -13,6 +13,13 @@
     "declarationMap": true,
     "sourceMap": true,
     "composite": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // Resolve workspace packages to source, matching the vitest alias, so typecheck and
+    // tests always see the same code and a stale dist cannot make either one lie.
+    "paths": {
+      "@hei/audit": ["./packages/audit/src/index.ts"],
+      "@hei/rules-engine": ["./packages/rules-engine/src/index.ts"],
+      "@hei/rules-loader": ["./packages/rules-loader/src/index.ts"]
+    }
   }
 }

@@ -2,11 +2,15 @@
   "name": "splitero-hei-triage",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20.11" },
-  "workspaces": ["packages/*"],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc --build",
-    "typecheck": "tsc --build --force",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "replay": "tsx scripts/replay.ts",
