@@ -1,5 +1,11 @@
 # Questions we cannot answer yet
 
+> **Status: this describes how the system is designed to behave. It has not been built
+> yet.** Every "what our system does" below is a commitment we are building toward, not a
+> report of finished software. This banner comes off, section by section, as each
+> behaviour ships and is tested. Nothing on this page is an estimate of results — it is a
+> description of intended handling.
+
 This page is for readers who are not engineers. There is no code on it, and every
 term is explained where it first appears.
 

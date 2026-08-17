@@ -1,5 +1,18 @@
 # Phase 1 — Domain model and rules-engine interface
 
+> ## ⚠️ This document describes design intent, not shipped code
+>
+> **No implementation exists yet.** Every type signature below is a proposal. When code
+> lands, this document is superseded by `docs/ARCHITECTURE.md`, which will be written
+> *from the code*, and any place the code diverged from this plan will be reported
+> explicitly rather than quietly reconciled.
+>
+> **What isn't finished:** all of it. See
+> [`PHASE1A_AUDIT_RETROFIT.md`](PHASE1A_AUDIT_RETROFIT.md) for the auditability
+> requirements folded in after this was written — §1.5, §2.2 and §3 are amended there
+> (the engine returns audit records rather than emitting them; `VerdictLedger` becomes a
+> view over one append-only audit store).
+
 **Status:** proposal, awaiting review. No implementation code exists yet.
 **Sources of truth:** `docs/research/SPLITERO_VERIFIED_TERMS.md` (outranks) then `docs/research/HEI_DOMAIN.md`.
 **Companion:** `docs/adr/0001-deterministic-rules-engine.md` (the architectural rule this model exists to enforce).

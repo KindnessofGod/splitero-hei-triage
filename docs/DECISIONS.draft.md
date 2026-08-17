@@ -1,194 +1,289 @@
-# Decisions — running draft
+# The builder's log
 
-Append-only working log. Decisions that harden get promoted to an ADR in `docs/adr/`.
-Newest at the bottom.
+Append-only. Newest at the bottom. Entries that harden get promoted to an ADR in `docs/adr/`.
 
-Status key: **settled** · **proposed** (awaiting review) · **open** (needs input)
+Each entry: **the question · what I proposed · what you decided · why, in your words · what
+would change our mind · what the change cost.**
 
----
+Tags — `[DECISION]` you decided · `[REJECTED]` an option we ruled out · `[CORRECTION]` I got
+something wrong and it was fixed · `[LEARNED]` a fact from the domain that moved the design ·
+`[PROPOSED]` awaiting you, not yet a decision.
 
-## D-001 — Deterministic rules engine makes every decision — **settled**
-*2026-08-17*
-
-Promoted to [ADR 0001](adr/0001-deterministic-rules-engine.md). Non-negotiable per the
-brief. The model extracts fields and renders explanations; it never decides. Enforced by
-five structural mechanisms (empty dependency closure, import lint, synchronous signature,
-seal-then-render with `Explanation` as a leaf type, seal verification on read), plus an
-adversarial-extractor eval that must leave the verdict distribution byte-identical.
+> **Standing rule, added 2026-08-17 at your instruction:** no entry is written without your
+> input, because it records *your* reasoning, not mine. Where a "why, in your words" field is
+> empty, the entry is a `[PROPOSED]` and is not binding on anything.
 
 ---
 
-## D-002 — Source-of-truth precedence — **settled**
-*2026-08-17*
+## 001 · Who makes the decision — `[DECISION]`
 
-`docs/research/SPLITERO_VERIFIED_TERMS.md` (first-party, read from splitero.com
-2026-08-16) outranks `docs/research/HEI_DOMAIN.md` on any conflict. Four values in
-HEI_DOMAIN §1.5 are known wrong and are superseded:
+**The question.** Does a language model decide eligibility, or does a deterministic engine?
 
-| Value | HEI_DOMAIN §1.5 | Verified | Used |
+**What I proposed.** Nothing — you specified this before I had an opinion.
+
+**What you decided.** A deterministic rules engine makes every decision. The model does two
+things only: extract fields from documents, and render a human explanation from rule output.
+No code path where a model output becomes a decision. Enforced structurally.
+
+**Why, in your words.** *"The architectural rule, and it is not negotiable… There must be no
+code path where a model output becomes a decision. Enforce that structurally."*
+
+**What would change our mind.** In [ADR 0001](adr/0001-deterministic-rules-engine.md) — four
+conditions, none currently true. Explicitly *not* sufficient: better extraction accuracy,
+higher benchmark scores, or a lower perceived chance of enforcement.
+
+**Cost.** Novel situations escalate rather than resolve. Someone maintains the rule corpus.
+Recall is bounded by what is encoded, so the eval must report rule coverage. Higher escalation
+volume — accepted deliberately, see 014.
+
+---
+
+## 002 · Which source wins on a conflict — `[DECISION]`
+
+**The question.** `HEI_DOMAIN.md` and `SPLITERO_VERIFIED_TERMS.md` disagree on four figures.
+
+**What I proposed.** Nothing — you specified it.
+
+**What you decided.** The verified-terms file outranks the research file, always.
+
+**Why, in your words.** *"The verified-terms file was read directly from Splitero's own site
+and outranks the research file on any conflict — the research file's §1.5 numbers are known to
+be wrong in four places."*
+
+| Value | Research §1.5 | Verified | In use |
 |---|---|---|---|
 | Max investment | $500,000 | $600,000 | $600,000 |
 | Max combined LTV | 0.65–0.70 | 0.75 | 0.75 |
 | Safety Cap | 19.99% | 17.99% | 17.99% |
-| States | 13–14, Colorado uncertain | 17, **no Colorado** | 17 |
+| States | 13–14, Colorado unclear | 17, **no Colorado** | 17 |
 
-The YAML rule file carries `supersedes_note` so this is visible at the point of use.
-Anything either document flags as unverified is treated as unverified and never used as
-grounds for a decline. Splitero's payout model is **total home value**, confirmed
-first-party — settled, not an open question.
+**What would change our mind.** A first-party source newer than 2026-08-16. Third-party review
+sites never outrank splitero.com regardless of how many agree.
 
----
-
-## D-003 — `Fact` added as a fifth first-class entity — **proposed** (§6 question #5)
-*2026-08-17*
-
-Brief named Case, Document, Finding, Verdict. Adding `Fact`: a typed, provenance-carrying,
-confidence-bearing value. It is the seam between the fallible half of the system and the
-deterministic half, and naming it is what makes that seam enforceable rather than
-aspirational. One abstraction pays for field-level eval scoring, renderer grounding,
-uncertainty escalation, replay, and audit.
+**Cost.** None. The YAML carries `supersedes_note` so it is visible at the point of use.
 
 ---
 
-## D-004 — `FactSet` permits multiple facts per key — **settled**
-*2026-08-17*
+## 003 · Occupancy contradiction — `[DECISION]`
 
-Cross-document contradiction is the product, not an error to smooth over. A
-last-write-wins map would silently delete adversarial case 18 (occupancy contradicted
-across application, tax record and insurance policy). `resolve()` returns one of four
-states — `KNOWN`, `CONFLICTED`, `LOW_CONFIDENCE`, `UNKNOWN` — and `CONFLICTED` and
-`LOW_CONFIDENCE` are distinct escalation triggers.
+**The question.** Splitero's own FAQ says second homes and investment properties may be
+eligible on one page, and requires owner-occupancy at origination on another. Which is the rule?
 
----
+**What I proposed.** Nothing — you pre-empted it.
 
-## D-005 — Escalation is split into POLICY and INTEGRITY — **settled**
-*2026-08-17*
+**What you decided.** Do not resolve it. `OCCUPANCY_AMBIGUOUS → ESCALATE`, documented as an
+open question in `docs/business/FAQ.md`.
 
-`INTEGRITY_ESCALATE` = the facts are not trustworthy (wrong-parcel title report,
-instruction-like text in a document, extraction confidence below the YAML threshold).
-`POLICY_ESCALATE` = facts are trusted, policy needs a human (trust vesting, occupancy
-ambiguity, sub-state service area). Adversarial case 9 versus case 5 are different
-failures and collapsing them loses the distinction that drives the resolution order.
+**Why, in your words.** *"Do not resolve this. Encode it as OCCUPANCY_AMBIGUOUS → ESCALATE and
+document it as an open question."*
 
----
+**What would change our mind.** One authoritative Splitero statement — an underwriting guideline
+or a corrected public page — saying whether owner-occupancy is required at funding, and what the
+exceptions are.
 
-## D-006 — Rules engine signature is pure, synchronous, total — **settled**
-*2026-08-17*
+**Cost.** Every second-home and investment-property applicant goes to a human. Under-counts the
+headline shift-left metric, because these cases are neither approved nor declined at intake.
 
-`evaluate(input: EvaluationInput): Verdict`. Not async — an async signature is a licence
-to do I/O, and once a rule can await, a rule can call a model. Not throwing — missing or
-contradictory facts are domain outcomes, and an unhandled exception in an underwriting
-path is an unhandled applicant. `asOf` is required, not defaulted to now, so replay is
-not opt-in.
+**Where I would push back.** Nowhere. Picking a reading silently would recreate the exact harm
+the project exists to prevent — advancing someone who gets declined in month four.
 
 ---
 
-## D-007 — Engine input is `FactSet`, not `Case` — **settled**
-*2026-08-17*
+## 004 · Auditability is a first-class requirement — `[DECISION]`
 
-`Case` is the fastest-changing type in the system; the engine is the slowest. Coupling
-the deepest module to the intake schema is backwards. The engine owns its input type,
-so intake, document formats and orchestration can all be rebuilt without touching it.
+**The question.** Is the trace a logging concern layered on afterwards, or a design constraint?
 
----
+**What I proposed.** Phase 1 had append-only sealed verdicts and provenance on every fact, but
+no per-step trace and no replay command. Weaker than what you asked for.
 
-## D-008 — Verdicts are append-only and sealed; `Case` holds no decision field — **settled**
-*2026-08-17*
+**What you decided.** Every decision node traceable, not logged. One `correlation_id` per case
+threaded through everything including n8n. Every step emits a record whether or not it changed
+anything. Append-only, corrections as new records. `npm run replay <correlation_id>` prints the
+chain as a narrative, and it is tested.
 
-A mutable decision field on `Case` is a field something eventually assigns to. Current
-decision is a derived read over the ledger. `seal` is a content hash computed before
-rendering; `VerdictLedger.read()` recomputes and fails on mismatch.
+**Why, in your words.** *"Not logged — traceable. Someone must be able to take a single case and
+reconstruct exactly what happened, in order, with the reasoning, months later."* And: *"A record
+saying `verdict: DECLINE` is useless. A record carrying the rule, the version, the evidence and
+the threshold is an audit trail."* And on n8n: *"A trace that stops at the boundary of the
+orchestrator is not a trace."*
 
----
+**What would change our mind.** Nothing identified. This constrains build order rather than
+trading against anything — the audit store is slice 1, before any pipeline stage.
 
-## D-009 — Renderer sees only the facts the rules actually read — **settled**
-*2026-08-17*
-
-`ExplanationRenderer(sealedVerdict, factsNamedInFindingFactsRead)`. Hallucinated grounds
-become unexpressible rather than merely penalised: the renderer cannot cite an appraised
-value in a state-eligibility decline because that rule never read it. `Rule.reads` is
-declarative and enforced at runtime, which also gives the eval harness a free rule-coverage
-report.
+**Cost.** One record per rule *considered*, not per rule that fired. Roughly 40× write
+amplification on evaluation. Accepted: your DECLINE-chain requirement needs the passes.
 
 ---
 
-## D-010 — INCOMPLETE and DECLINE are distinct dispositions — **settled**
-*2026-08-17*
+## 005 · The rules engine is pure, so it returns audit records rather than writing them — `[PROPOSED]`
 
-A legal boundary, not a UX nicety: different notification contents and different 30-day
-clocks under Reg B (HEI_DOMAIN §4.5). Adversarial case 13 tests it directly.
+**The question.** The engine has an empty dependency closure and a synchronous signature — that
+is what makes "the model cannot decide" structural rather than conventional. It therefore cannot
+write to a database. How does it satisfy "every step emits an audit record"?
 
----
+**What I proposed.** `evaluate` returns `{verdict, audit[]}`. An `AuditedRulesEngine` wrapper in
+the adapter package persists the records and is the only constructor exposed at the composition
+root. If the append fails, no verdict is returned — a decision that was not recorded did not
+happen.
 
-## D-011 — Occupancy ambiguity is escalated, never resolved — **settled**
-*2026-08-17*
+**What you decided.** *(pending)*
 
-Splitero's own FAQ contradicts itself: one page says second homes and investment
-properties may be eligible, another requires owner-occupancy at origination. Encoded as
-rule `occupancy.ambiguous_policy` → `OCCUPANCY_AMBIGUOUS` → `POLICY_ESCALATE`, carrying
-both quotations into the reviewer's queue item. Documented as an open question in
-[docs/business/FAQ.md](business/FAQ.md) §1. Resolving it silently would recreate the exact
-harm the project exists to prevent.
+**Why, in your words.** *(pending)*
 
----
-
-## D-012 — State match is necessary but not sufficient — **settled**
-*2026-08-17*
-
-Splitero services *"specific areas of"* the seventeen states, and the areas are not
-published. Outside the seventeen → terminal `DECLINE`. Inside → `POLICY_ESCALATE` with
-`STATE_ELIGIBLE_PENDING_AREA_CHECK`, never a clean pass.
+**Cost if adopted.** One indirection between the caller and the engine. In exchange, purity
+survives intact and emission is guaranteed by the wiring rather than by discipline.
 
 ---
 
-## D-013 — Rule expressiveness: parameterised predicates — **open** (§6 question #1)
-*2026-08-17*
+## 006 · `correlation_id` and `case_id` are the same identifier — `[PROPOSED]`
 
-Proposed: thresholds, dates, state lists, reason codes and message templates in YAML;
-predicates as ~12 tested TypeScript functions registered by id. Alternative: a full YAML
-expression DSL, which lets ops author logic but requires building an interpreter, where
-bugs are silent and systemic. Everything that has actually changed in this domain is a
-parameter, not a new kind of check. **Awaiting decision.**
+**The question.** You specified `correlation_id` generated at intake; I designed `caseId`
+generated at intake. One value, two names.
 
----
+**What I proposed.** They are identical. `correlation_id` on the wire and in the audit store,
+`CaseId` as the in-code type. Beneath it: `run_id` per pipeline pass, `record_id` per step,
+`parent_record_id` for causality, and a monotonic `sequence` per correlation_id that provides
+replay ordering — because timestamps collide and clocks move.
 
-## D-014 — Resolution order: POLICY_ESCALATE outranks non-terminal DECLINE — **open** (§6 question #2)
-*2026-08-17*
+**What you decided.** *(pending)*
 
-Order: INTEGRITY_ESCALATE → terminal DECLINE → POLICY_ESCALATE → DECLINE → INCOMPLETE →
-APPROVE. Makes the escalation false-negative rate zero by construction, at the cost of a
-lower headline shift-left number. Alternative — DECLINE ahead of POLICY_ESCALATE — improves
-the headline metric by auto-deciding cases a human should see. Recommend keeping the
-proposed order. **Awaiting decision.**
-
-Note the `terminal` flag exists precisely so this stays defensible: escalating a Texas
-property to a human wastes the human and delays the applicant, because no human judgement
-changes `STATE_NOT_SERVICED`.
+**Why, in your words.** *(pending)*
 
 ---
 
-## D-015 — Eval-set fidelity — **open** (§6 question #3)
-*2026-08-17*
+## 007 · Raw model responses vs. append-only and deletion rights — `[PROPOSED]` — **needs you**
 
-(a) all 200 cases as structured JSON — fast, extraction metrics are fiction; (b) 200 JSON
-plus the 20 adversarial cases rendered to PDF with scan degradation — honest extraction
-signal exactly where the hard cases are; (c) all 200 rendered. Recommend (b), with (c)
-open as a later pass. **Awaiting decision.**
+**The question.** You require the raw model response before parsing, *and* append-only with no
+deletes, *and* sensitive inputs hashed or redacted. A raw government-ID extraction is the least
+redacted artifact in the system. Together these build a permanent undeletable store of applicant
+identity data, in a state with statutory deletion rights.
+
+**What I proposed.** Three options, laid out in
+[`design/PHASE1A_AUDIT_RETROFIT.md`](design/PHASE1A_AUDIT_RETROFIT.md) Fork A. Recommending A2:
+digest in the immutable chain forever, raw payload encrypted under a per-case key in a side
+table, deletion implemented by destroying the key. Append-only holds — nothing is removed, one
+key becomes unusable.
+
+**What you decided.** *(pending)*
+
+**Why, in your words.** *(pending)*
+
+**Cost if A2 adopted.** A key-management story and roughly a day. Keeps your debugging
+requirement fully intact.
 
 ---
 
-## D-016 — `agent-ops-core` is stubbed behind local ports — **open** (§6 question #4)
-*2026-08-17*
+## 008 · Who labels the 200 golden cases — `[PROPOSED]` — **needs you**
 
-Not on npm (404) and not present on disk. Defining `Clock`, `IdGen`, `BlobStore`,
-`LlmClient` and tracing as local interfaces and stubbing them, so adopting the real
-library later is an adapter change rather than a refactor. **Confirm, or point at the
-package.**
+**The question.** You said "build the golden dataset" and later "labelled by me." Two hundred
+cases is more than a review pass.
+
+**What I proposed.** Fork B in the retrofit plan. Recommending B2: I generate cases with
+proposed labels, you ratify or correct in one pass, and the file preserves every disagreement
+between `proposed_label` and `human_label`.
+
+**What you decided.** *(pending)*
+
+**Why, in your words.** *(pending)*
+
+**Note.** The twenty adversarial labels are already yours — HEI_DOMAIN §6.5 specifies each one
+verbatim — and will record `labelled_by: human` under any option.
 
 ---
 
-## D-017 — Node 22 rather than Node 20 — **settled**
-*2026-08-17*
+## 009 · I wrote seventeen log entries without you — `[CORRECTION]`
 
-Brief says Node 20+. Sandbox has v22.22.2. Targeting Node 22 LTS; `engines` will say
-`>=20.11` so nothing in the brief is contradicted.
+**What happened.** Before you set the standing rule, I wrote seventeen entries and tagged twelve
+**settled**. Only three carried *your* reasoning. The other nine were my conclusions wearing
+your label.
+
+**Why it mattered.** A log where my inferences are indistinguishable from your decisions is
+worse than no log — it manufactures agreement. Your framing: the entry records your reasoning,
+not mine.
+
+**Fixed.** File restructured to your schema. The nine are re-tagged `[PROPOSED]` with the "why,
+in your words" field visibly empty. Nothing is binding until you speak.
+
+**Learned.** Distinguish *I decided this because it follows from what you said* from *you
+decided this*. The first is a proposal no matter how strongly it follows.
+
+---
+
+## 010 · Your escalation requirement appears to settle the resolution order — `[PROPOSED]`
+
+**The question.** Does `POLICY_ESCALATE` outrank a non-terminal `DECLINE`? I had this open as a
+genuine trade-off: escalation-first gives a zero escalation false-negative rate but a lower
+headline shift-left number.
+
+**What I proposed.** Escalation-first, and I flagged it as your call.
+
+**What you appear to have decided.** *"That number should be zero and I should be able to say so
+out loud."* Only escalation-first makes it zero **by construction**. The alternative makes it
+zero only if the eval happens to find zero, which you could not say out loud in advance.
+
+**Why, in your words.** *(pending — confirm you meant zero-as-guaranteed, not zero-as-measured)*
+
+**Cost.** The headline "declined at intake" number is lower than the alternative would produce.
+That is the trade you appear to have taken, and I think it is the right one.
+
+---
+
+## 011 · Branch name references the tool — `[PROPOSED]` — **blocked on you**
+
+**The question.** Your standard: branches use `feat/`, `fix/`, `docs/`, `refactor/`, never the
+tool name. The branch I am required to push to is `claude/hei-intake-triage-system-k898kc`.
+
+**What I proposed.** Not renaming unilaterally — my operating constraints forbid pushing
+elsewhere without your explicit permission. `feat/hei-intake-triage` on your word; the standard
+applies to every branch after this one regardless.
+
+**What you decided.** *(pending)*
+
+---
+
+## 012 · Node 22 rather than Node 20 — `[PROPOSED]`
+
+**The question.** Brief says Node 20+; the sandbox has v22.22.2.
+
+**What I proposed.** Target Node 22 LTS, declare `engines: ">=20.11"` so nothing in the brief is
+contradicted.
+
+**What you decided.** *(pending — low stakes, say nothing and I will proceed)*
+
+---
+
+## 013 · `agent-ops-core` is not obtainable — `[LEARNED]`
+
+**What I found.** Not on npm — `npm view agent-ops-core` returns 404 — and not present anywhere
+on this filesystem.
+
+**What it changes.** I will define the ports we need — `Clock`, `IdGen`, `BlobStore`,
+`LlmClient`, `AuditSink`, tracing — as local interfaces and stub them, so adopting the real
+library later is an adapter swap rather than a refactor. Your brief anticipated this: *"Build
+with the agent-ops-core library where it's ready; stub and swap otherwise."*
+
+**Open.** If it lives in a private registry or another repository, point me at it.
+
+---
+
+## 014 · Design conclusions from Phase 1 that are mine, not yours — `[PROPOSED]`
+
+Grouped, because none is individually contentious and all await the same nod. Full reasoning in
+[`design/PHASE1_DOMAIN_MODEL.md`](design/PHASE1_DOMAIN_MODEL.md).
+
+| # | Proposal | Why |
+|---|---|---|
+| a | Add `Fact` as a fifth entity alongside Case/Document/Finding/Verdict | It is the seam between the fallible half and the deterministic half; naming it makes the seam enforceable rather than aspirational |
+| b | `FactSet` permits multiple facts per key | Cross-document contradiction is the product, not an error. A last-write-wins map silently deletes adversarial case 18 |
+| c | Split escalation into `POLICY` and `INTEGRITY` | Case 9 (no trustworthy facts) and case 5 (excellent facts, ambiguous policy) are different failures |
+| d | `evaluate` is pure, synchronous, total, with `asOf` required | Sync is the enforcement mechanism for 001. Total because an unhandled exception in underwriting is an unhandled applicant. Required `asOf` means replay is not opt-in |
+| e | Engine input is `FactSet`, not `Case` | Never couple the slowest-changing module to the fastest-changing type |
+| f | `Case` carries no decision field | A mutable decision field is a field something eventually assigns to |
+| g | Renderer receives only the facts the firing rules declared they read | Makes hallucinated grounds unexpressible rather than merely penalised |
+| h | `INCOMPLETE` and `DECLINE` are distinct dispositions | A legal boundary — different notice contents, different 30-day clocks |
+| i | State match is necessary but not sufficient | Splitero services *"specific areas of"* 17 states and does not publish which |
+| j | Rule parameters in YAML, predicates as ~12 tested TypeScript functions | Everything that has actually moved in this domain is a parameter, not a new kind of check. A YAML expression DSL means building an interpreter, where bugs are silent |
+| k | One append-only store, not two | Phase 1's `VerdictLedger` becomes a typed view over `audit_record`. Two append-only stores is two sources of truth and an eventual divergence bug |
+
+Item **j** is the one with a real alternative and I would like your view specifically. The rest
+I will proceed on unless you say otherwise.

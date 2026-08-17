@@ -1,8 +1,9 @@
 # ADR 0001 — A deterministic rules engine makes every decision
 
-- **Status:** Accepted
+- **Status:** Accepted — decision is binding; **the enforcement mechanisms below are designed but not yet implemented**
 - **Date:** 2026-08-17
 - **Applies to:** the whole system, permanently. Superseding this ADR means rebuilding the decision path.
+- **Amended by:** [`docs/design/PHASE1A_AUDIT_RETROFIT.md`](../design/PHASE1A_AUDIT_RETROFIT.md) §C-1 — the pure engine *returns* its audit records and an `AuditedRulesEngine` adapter persists them, so the empty-dependency-closure property survives the auditability requirement.
 
 ## Context
 
