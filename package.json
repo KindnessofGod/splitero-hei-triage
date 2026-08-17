@@ -1,0 +1,21 @@
+{
+  "name": "splitero-hei-triage",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.11" },
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build --force",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "replay": "tsx scripts/replay.ts",
+    "docs:check": "tsx scripts/check-diagrams.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
