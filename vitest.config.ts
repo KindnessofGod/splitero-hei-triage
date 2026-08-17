@@ -12,6 +12,7 @@ export default defineConfig({
       '@hei/rules-engine': src('rules-engine'),
       '@hei/rules-loader': src('rules-loader'),
       '@hei/extraction': src('extraction'),
+      '@hei/monitoring': src('monitoring'),
     },
   },
   test: {
