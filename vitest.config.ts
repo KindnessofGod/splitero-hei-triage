@@ -11,6 +11,7 @@ export default defineConfig({
       '@hei/audit': src('audit'),
       '@hei/rules-engine': src('rules-engine'),
       '@hei/rules-loader': src('rules-loader'),
+      '@hei/extraction': src('extraction'),
     },
   },
   test: {

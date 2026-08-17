@@ -57,6 +57,16 @@ describe('ADR 0001 · the decision path cannot reach a model', () => {
     expect(evaluate.constructor.name).not.toBe('AsyncFunction');
   });
 
+  // Regression guard. This defaulted to DECLINE, which meant every rule defining only
+  // `on_pass` declined every applicant who did NOT trigger it — e.g. everyone without a
+  // PACE lien was declined for not having a PACE lien. An adverse outcome has to be
+  // written down; silence is never a decline.
+  it('defaults an unspecified outcome branch to PASS, never to DECLINE', () => {
+    const src = readFileSync(join(pkgRoot, 'src/engine.ts'), 'utf8');
+    expect(src).toContain("disposition: spec?.disposition ?? 'PASS'");
+    expect(src).not.toMatch(/disposition:\s*spec\?\.disposition\s*\?\?\s*\(result\.pass\s*\?/);
+  });
+
   it('never calls Date.now() — asOf is required so replay is not opt-in', () => {
     const offenders = sourceFiles(join(pkgRoot, 'src')).filter((f) =>
       /Date\.now\(\)|new Date\(\s*\)/.test(readFileSync(f, 'utf8')),

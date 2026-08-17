@@ -172,11 +172,20 @@ export class DeterministicRulesEngine implements RulesEngine {
     }
 
     const spec: RuleOutcomeSpec | undefined = result.pass ? rule.onPass : rule.onFail;
+
+    // No spec for the branch we landed on means the rule has nothing to say about this
+    // case, so the finding is a PASS.
+    //
+    // This default used to be DECLINE for the fail branch, which was badly wrong: a
+    // dozen rules in the corpus define only `on_pass` (superpriority liens, transfer
+    // restrictions, entity vesting, occupancy ambiguity...), so every applicant WITHOUT
+    // a PACE lien was being declined for not having one. An adverse outcome must be
+    // written down explicitly. Silence is never a decline.
     return {
       ...base,
-      disposition: spec?.disposition ?? (result.pass ? 'PASS' : 'DECLINE'),
+      disposition: spec?.disposition ?? 'PASS',
       ...(spec?.reasonCode !== undefined ? { reasonCode: spec.reasonCode } : {}),
-      severity: spec?.severity ?? (result.pass ? 0 : 50),
+      severity: spec?.severity ?? 0,
       factsRead,
       tested: result.tested,
       threshold: result.threshold,

@@ -87,18 +87,65 @@ describe('the YAML rule set compiles', () => {
 });
 
 describe('adversarial case 8 — self-disclosed damage declines at INTAKE', () => {
-  it('fires at stage 3 on the free-text field alone, before any appraisal exists', async () => {
-    const verdict = await evaluate([said('application.free_text_purpose', 'my roof is leaking and I need to replace it')], 3);
-    const finding = verdict.findings.find((f) => f.ruleId === 'condition.self_disclosed_damage')!;
+  // PRIMARY detector: the model classified the applicant's prose into a condition code.
+  it('declines at stage 3 from the extracted condition code', async () => {
+    const verdict = await evaluate(
+      [fact('application.disclosed_conditions', ['WATER_INTRUSION'], 0.91)],
+      3,
+    );
+    const finding = verdict.findings.find((f) => f.ruleId === 'condition.disclosed_conditions')!;
     expect(finding.disposition).toBe('DECLINE');
     expect(finding.detectableAtStage).toBe(3);
     expect(verdict.decision).toBe('DECLINE');
     expect(verdict.principalReasons).toContain('SELF_DISCLOSED_DAMAGE');
   });
 
-  it('does not fire on an unrelated purpose', async () => {
-    const verdict = await evaluate([said('application.free_text_purpose', 'paying for my daughter\'s college tuition')], 3);
+  // The phrasing that motivated the whole redesign: no keyword in this sentence.
+  it('catches a paraphrase no keyword list would match', async () => {
+    const verdict = await evaluate(
+      [
+        said('application.free_text_purpose', 'the ceiling stains every time it rains'),
+        fact('application.disclosed_conditions', ['WATER_INTRUSION'], 0.88),
+      ],
+      3,
+    );
+    // The keyword rule finds nothing here; the extracted code carries it.
+    expect(
+      verdict.findings.find((f) => f.ruleId === 'condition.disclosed_damage_keywords')!.disposition,
+    ).toBe('PASS');
+    expect(verdict.decision).toBe('DECLINE');
+  });
+
+  // SECONDARY detector: the recall floor. Extraction returned nothing at all.
+  it('still declines from the keyword floor when extraction produced no code', async () => {
+    const verdict = await evaluate(
+      [said('application.free_text_purpose', 'my roof is leaking and I need to replace it')],
+      3,
+    );
+    expect(
+      verdict.findings.find((f) => f.ruleId === 'condition.disclosed_damage_keywords')!.disposition,
+    ).toBe('DECLINE');
+    expect(verdict.decision).toBe('DECLINE');
+  });
+
+  it('neither detector fires on an unrelated purpose', async () => {
+    const verdict = await evaluate(
+      [
+        said('application.free_text_purpose', "paying for my daughter's college tuition"),
+        fact('application.disclosed_conditions', ['NONE_DISCLOSED'], 0.97),
+      ],
+      3,
+    );
     expect(verdict.principalReasons).not.toContain('SELF_DISCLOSED_DAMAGE');
+  });
+
+  it('escalates rather than declining when the extraction was not confident', async () => {
+    const verdict = await evaluate(
+      [fact('application.disclosed_conditions', ['ROOF_DAMAGE'], 0.35)],
+      3,
+    );
+    expect(verdict.decision).toBe('ESCALATE');
+    expect(verdict.principalReasons).toContain('LOW_EXTRACTION_CONFIDENCE');
   });
 });
 

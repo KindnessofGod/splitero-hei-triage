@@ -276,16 +276,50 @@ rules:
       reason_code: OCCUPANCY_MISMATCH
       severity: 85
 
-  # ─── Condition — the thesis rule ────────────────────────────────────────────
-  # Adversarial case 8, and the whole reason this project exists. A Hometap applicant was
+  # ─── Condition — the thesis rules ───────────────────────────────────────────
+  # Adversarial case 8, and the reason this project exists. A Hometap applicant was
   # rejected for roof and water damage he had disclosed upfront as his reason for wanting
   # the money. Estevan G. spent 4.5 months and borrowed to replace a roof before a decline.
   #
-  # This reads the free-text purpose field with a keyword list — deterministic matching,
-  # not a model's opinion — and fires at STAGE 3, before an appraisal is ordered. The C5
-  # rating that arrives at stage 5 only confirms what was already said.
-  - id: condition.self_disclosed_damage
+  # TWO INDEPENDENT DETECTORS, deliberately.
+  #
+  # PRIMARY is `condition.disclosed_conditions`: a model reads the applicant's own words,
+  # however they phrased them, and maps them onto a closed vocabulary of condition codes.
+  # That is a linguistic job and a model is the right tool — "the ceiling stains every
+  # time it rains" contains no keyword any developer would have written down. The model
+  # CLASSIFIES; it does not decide. The rule below decides, by set membership on an enum.
+  #
+  # SECONDARY is `condition.disclosed_damage_keywords`: a literal phrase list. It is a
+  # recall floor, not the mechanism. If the model returns nothing and the text plainly
+  # says "roof is leaking", the keyword rule still fires. Union semantics: either
+  # detector alone is enough to decline, so the model can only ADD recall, never remove it.
+  #
+  # Both fire at STAGE 3, before an appraisal is ordered.
+  - id: condition.disclosed_conditions
     version: "1"
+    effective_from: "2026-08-16"
+    predicate: set_intersects
+    reads: [application.disclosed_conditions]
+    minimum_stage: 3
+    detectable_at_stage: 3
+    on_missing_facts: SKIP
+    params:
+      # NONE_DISCLOSED and COSMETIC_ONLY are deliberately absent: they are the answers
+      # that mean "nothing disqualifying here".
+      set: [ROOF_DAMAGE, WATER_INTRUSION, FLOOD_DAMAGE, FIRE_DAMAGE, FOUNDATION_ISSUE,
+            MOLD, UNINHABITABLE, DEFERRED_MAINTENANCE_MAJOR, SEPTIC_OR_WELL_FAILURE,
+            PEST_INFESTATION, UNPERMITTED_WORK]
+    on_pass:
+      disposition: DECLINE
+      reason_code: SELF_DISCLOSED_DAMAGE
+      severity: 88
+      note: >
+        Disclosed by the applicant at intake, in their own words. Decline here, before
+        appraisal and title spend, rather than after. This is the rule the project
+        exists for.
+
+  - id: condition.disclosed_damage_keywords
+    version: "2"
     effective_from: "2026-08-16"
     predicate: text_matches_any
     reads: [application.free_text_purpose]
@@ -293,13 +327,15 @@ rules:
     detectable_at_stage: 3
     on_missing_facts: SKIP
     params:
+      # A recall floor only. Deliberately literal and deliberately narrow — this exists
+      # to catch the case where extraction returned nothing, not to understand English.
       patterns:
-        - "roof (is )?(leak|leaking|leaks|failing|caving|shot|bad)"
+        - "roof (is )?(leak|leaking|leaks|failing|caving)"
         - "(need|needs|replace|replacing) (a )?(new )?roof"
         - "water damage"
         - "flood(ed|ing)? (the )?(basement|house|home)"
         - "foundation (crack|issue|problem|settling)"
-        - "mold"
+        - "\\bmold\\b"
         - "uninhabitable"
         - "condemn(ed)?"
         - "fire damage"
@@ -308,8 +344,9 @@ rules:
       reason_code: SELF_DISCLOSED_DAMAGE
       severity: 88
       note: >
-        Disclosed by the applicant at intake. Decline here, before appraisal and title
-        spend, rather than after. This is the rule the project exists for.
+        Caught by the literal phrase list. If this fires and
+        condition.disclosed_conditions did not, extraction missed something a keyword
+        found — worth investigating as an extraction regression.
 
   - id: condition.rating
     version: "1"

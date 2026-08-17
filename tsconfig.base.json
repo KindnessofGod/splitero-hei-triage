@@ -19,7 +19,8 @@
     "paths": {
       "@hei/audit": ["./packages/audit/src/index.ts"],
       "@hei/rules-engine": ["./packages/rules-engine/src/index.ts"],
-      "@hei/rules-loader": ["./packages/rules-loader/src/index.ts"]
+      "@hei/rules-loader": ["./packages/rules-loader/src/index.ts"],
+      "@hei/extraction": ["./packages/extraction/src/index.ts"]
     }
   }
 }
