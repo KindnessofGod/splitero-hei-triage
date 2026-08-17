@@ -287,3 +287,114 @@ Grouped, because none is individually contentious and all await the same nod. Fu
 
 Item **j** is the one with a real alternative and I would like your view specifically. The rest
 I will proceed on unless you say otherwise.
+
+---
+
+## 015 · Rule expressiveness — parameterised predicates — `[DECISION]`
+
+**The question.** 014j: rule logic in a YAML expression language, or parameters in YAML with
+predicates as tested TypeScript functions?
+
+**What I proposed.** Parameters in YAML, predicates in TypeScript.
+
+**What you decided.** Option 1 — parameters in YAML, predicates in TypeScript.
+
+**Why, in your words.** *(you chose without stating a reason — say the word and I will record
+yours here; until then this is a selection, not an argument)*
+
+**What would change our mind.** An ops team needing to author genuinely new *kinds* of check
+without an engineer, often enough that the cost of building and testing an expression
+interpreter is repaid.
+
+**Cost.** Adding a new kind of check needs a TypeScript change. Eight predicates written so far
+(`value_in_set`, `value_not_in_set`, `at_least`, `at_most`, `within_range`, `ratio_at_most`,
+`date_within_days`, `always`) cover every rule in the verified terms.
+
+---
+
+## 016 · Golden dataset labelling — I propose, you ratify — `[DECISION]`
+
+**The question.** 200 cases is more than a review pass. Who labels?
+
+**What I proposed.** B2 — I generate with proposed labels, you ratify or correct in one pass.
+
+**What you decided.** B2.
+
+**Why, in your words.** *(pending)*
+
+**Cost.** One review pass from you. Every case carries `proposed_label`, `human_label`,
+`labelled_by` and `reviewed_at`, and disagreements are preserved rather than overwritten —
+where you change my label, that gap is itself evidence about where a plausible reading of the
+rules was wrong.
+
+---
+
+## 017 · Escalation outranks non-terminal decline — `[DECISION]`
+
+**The question.** Confirmed from 010: does POLICY_ESCALATE beat a non-terminal DECLINE?
+
+**What I proposed.** Yes, so the escalation false-negative rate is zero by construction rather
+than by measurement.
+
+**What you decided.** Yes.
+
+**Why, in your words.** *"That number should be zero and I should be able to say so out loud."*
+
+**Cost.** The headline "declined at intake" figure will be lower than the alternative would
+produce, because cases that could have been auto-declined go to a human instead. Accepted.
+
+**Implemented.** `DeterministicRulesEngine.#resolve`, order: INTEGRITY_ESCALATE → terminal
+DECLINE → POLICY_ESCALATE → DECLINE → INCOMPLETE → APPROVE. The `terminal` flag is what keeps
+this defensible — a Texas property still declines rather than wasting a reviewer, because no
+human judgement changes `STATE_NOT_SERVICED`.
+
+---
+
+## 018 · Branch renamed — `[DECISION]`
+
+**The question.** The working branch referenced the tool, against your naming standard.
+
+**What you decided.** Yes, rename.
+
+**Now on** `feat/hei-intake-triage`. The old branch is left in place rather than deleted.
+
+---
+
+## 019 · "Why are we deleting AI responses?" — `[CORRECTION]`, and 007 is still open
+
+**What you asked.** Why delete AI responses at all.
+
+**Where I went wrong.** I framed Fork A as a deletion policy. It isn't. Nothing is deleted in
+normal operation — every raw response is kept in full, forever. The mechanism exists for one
+situation only: a homeowner exercising a statutory erasure right, where the alternatives are
+refusing them or tearing a hole in the audit chain.
+
+**Two figures I got wrong.** I said "roughly a day" — with the raw payload in its own table
+from the start it is a couple of hours. And I did not say clearly enough that for *this*
+project it is moot: the 200 cases are synthetic, so there is no real person to erase. It is a
+design to point at, not one that will ever run.
+
+**Still open.** A2 (encrypt, erase by destroying the key) versus A1 (plaintext forever, with
+the limitation documented). Proceeding on A2 unless you say otherwise, because it is nearly
+free now and an expensive retrofit later.
+
+---
+
+## 020 · Slice 2 shipped — what the code says that the plan did not — `[LEARNED]`
+
+Written from the code, not the plan. Three things the design document did not anticipate:
+
+**Integrity signals needed to become findings.** The plan had extraction emitting
+`IntegritySignal` and hand-waved how it reached a decision. In the code the engine converts
+each signal into a synthetic `integrity.document_signal` finding, so it flows through the same
+resolution order as everything else rather than being a special case beside it.
+
+**Low confidence and conflict short-circuit the predicate.** The plan implied a rule would run
+and then be second-guessed. The code never runs the predicate at all when a fact it reads is
+`CONFLICTED` or below the confidence floor — it returns `INTEGRITY_ESCALATE` immediately. This
+is stronger: there is no computed-but-discarded decision anywhere in the trace.
+
+**`onMissingFacts: 'SKIP'` still emits a finding.** The plan said "the rule is NOT_EVALUABLE."
+In the code it returns a `PASS` finding carrying `missingFacts`, because your requirement is a
+record for every step whether or not it changed anything — a silently absent rule is exactly
+the gap a replay is supposed to expose.

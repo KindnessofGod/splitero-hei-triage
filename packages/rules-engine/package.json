@@ -1,0 +1,10 @@
+{
+  "name": "@hei/rules-engine",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "comment": "dependencies MUST stay empty — see ADR 0001 mechanism 1",
+  "dependencies": {}
+}
